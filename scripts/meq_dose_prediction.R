@@ -1,7 +1,9 @@
 ## Drug Effect → Redosing Decision Rule
-## nsepeda1@jh.edu
 ## Monitor-rated drug effect at 90 min predicting missed CME (MEQ < threshold)
 ## Decision rule: redose if avg drug effect ≤ 1 at 90 min
+# When to Redose? An Empirical Decision Rule for In-Session Psilocybin Redosing  ;Based on Real-Time Session Monitoring
+
+
 
 library(here)
 library(tidyverse)
@@ -310,3 +312,52 @@ df %>%
   theme_minimal(base_size = 13) +
   theme(panel.grid.minor = element_blank(),
         strip.text       = element_text(face = "bold"))
+
+
+redose_table %>%
+  filter(timepoint == "90 min") %>%
+  select(de_thresh, ppv, fpr) %>%
+  pivot_longer(c(ppv, fpr), names_to = "metric", values_to = "value") %>%
+  mutate(metric = factor(metric,
+                         levels = c("ppv", "fpr"),
+                         labels = c("PPV (redose was correct)",
+                                    "FPR (unnecessary redose)"))) %>%
+  ggplot(aes(x = de_thresh, y = value, color = metric)) +
+  geom_line(linewidth = 1.4) +
+  geom_point(size = 3.5) +
+  geom_vline(xintercept = 1, linetype = "dashed", color = "#555555") +
+  annotate("text", x = 1.08, y = 0.95, label = "Chosen rule (≤1)",
+           hjust = 0, size = 3.8, color = "#555555") +
+  scale_color_manual(values = c("PPV (redose was correct)"   = "#2C6E8A",
+                                "FPR (unnecessary redose)" = "#E05A2B"),
+                     name = NULL) +
+  scale_x_continuous(breaks = seq(0, 3, by = 0.5)) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  labs(
+    title    = "PPV and FPR by Drug Effect Threshold  |  90 min",
+    subtitle = paste0("CME threshold = ", round(cme_cutoff * 100), "%  |  Redose if drug effect ≤ threshold"),
+    x        = "Drug effect threshold (redose if ≤ this)",
+    y        = NULL
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(panel.grid.minor = element_blank(),
+        legend.position  = "top")
+
+
+map_dfr(seq(0.40, 1.00, by = 0.10), function(cut) {
+  df %>%
+    filter(timepoint == 90) %>%
+    group_by(study_id, ID, session, meq.total.pctmax) %>%
+    summarise(drug_effect = mean(Avg_OverallDrugEffect, na.rm = TRUE),
+              .groups = "drop") %>%
+    summarise(
+      meq_cutoff   = cut,
+      n_total      = n(),
+      n_cme        = sum(meq.total.pctmax >= cut),
+      pct_cme      = round(mean(meq.total.pctmax >= cut) * 100, 1),
+      mean_meq     = round(mean(meq.total.pctmax), 3),
+      mean_de_hit  = round(mean(drug_effect[meq.total.pctmax >= cut],  na.rm = TRUE), 2),
+      mean_de_miss = round(mean(drug_effect[meq.total.pctmax < cut],   na.rm = TRUE), 2)
+    )
+}) %>%
+  print(n = Inf)
